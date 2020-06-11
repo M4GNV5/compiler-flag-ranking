@@ -1,0 +1,21 @@
+\documentclass[11pt]{article}
+
+\usepackage{geometry}
+
+\title{\textbf{Finding common compilation options altering compilation output}}
+\author{Jakob Löw \\
+	Dominik Bayerl}
+\date{}
+\begin{document}
+
+\vspace{-4em}
+\maketitle
+
+\section{Abstract}
+Modern compilers often come with numerous compilation options. Apart from the most common options for defining input files, output files and general level of optimization, there are also options for enabling or disabling the use of certain processor features, certain optimizations or for specifying non-standard ABI options. \\
+In the bigger picture of our research we attempt to identify libraries binary files. Often compiler optimizations cause distortion in in the outputted binary files causing identification algorithms to fail. Compiling binaries multiple times with different compilation options each time gives a set of binaries which include the same libraries, but have different distortions. This set of binaries can then be used to test the robustness of a library identification algorithm against distortion. \\
+This paper aims at finding and ranking the most common compilation options used in the wild, which have an impact on compilation output. \\
+In the first step we analyze which compiler options have an impact on the binary output, filtering out options only used by the front end e.g. to enable or disable language features or compiler warnings. In the second step we describe how to obtain a set of relevant free and open source projects and their build files. In the third step we then extract the build options from the various build file formats used in these free and open source projects. In the final step we filter compilation options not relevant to the binary output and rank the options based on their usage frequency accross projects. This leaves us with a set of relevant compilation options which can be used alone or in combination in order to create a test set for library identification systems. \\
+While library identification systems usually work on machine code and are thus idenpendent of the programming language this paper will focus on the C programming language.
+
+\end{document}
