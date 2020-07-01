@@ -1,21 +1,296 @@
-\documentclass[11pt]{article}
+\documentclass[9pt, a4paper, twocolumn]{article}
 
-\usepackage{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage{makecell}
+\usepackage{float}
+\usepackage{amssymb}
+\usepackage{multirow}
 
-\title{\textbf{Finding common compilation options altering compilation output}}
-\author{Jakob Löw \\
-	Dominik Bayerl}
+\usepackage[a4paper, includefoot, top=25mm, left=18mm, right=18mm, bottom=25mm]{geometry}
+
+\hypersetup{
+    unicode=true,    % allow unicode chars in hyperlinks
+    breaklinks=true,
+    hidelinks,       % disable frames around links
+    colorlinks=true, % show links in a different color
+    linkcolor=%
+        black,       % use a black color for links
+    urlcolor=%
+        Blue,    % use a dark blue color for file references
+    citecolor=%
+        OliveGreen,   % use a dark green color for cite notes
+    % the following is additional stuff
+    pdftitle=Finding commom compilation options altering compilation output,       % title of the PDF
+    pdfauthor=Jakob Loew,      % author of the PDF
+    pdfkeywords=compiler-flags compilation compiler github gcc clang build tools,    % keywords of the PDF
+    pdfcreator=Jakob Loew,     % creator of the PDF
+    pdfproducer=Jakob Loew,    % producer of the PDF
+}
+
+\newenvironment{abstractbox}{
+%\begin{onecolumn}
+}{
+%\end{onecolumn}
+}
+
+\title{FINDING COMMON COMPILER OPTIONS ALTERING COMPILATION OUTPUT}
+\title{Finding Common Compiler Options Altering Compilation Output}
+\author{\textbf{Jakob Löw $^{1)}$ Dominik Bayerl $^{2)}$} \\
+	\\
+	1) Technische Hochschule Ingolstadt \\
+		Esplanade 10, 85049 Ingolstadt, Germany (E-mail: jakob@löw.com) \\
+	2) Technische Hochschule Ingolstadt \\
+		Esplanade 10, 85049 Ingolstadt, Germany (E-mail: dominik.bayerl@carissma.eu) \\}
 \date{}
+
 \begin{document}
+
+\newgeometry{includefoot, top=25mm, left=25.5mm, right=25.5mm, bottom=30mm, onecolumn}
 
 \vspace{-4em}
 \maketitle
 
-\section{Abstract}
-Modern compilers often come with numerous compilation options. Apart from the most common options for defining input files, output files and general level of optimization, there are also options for enabling or disabling the use of certain processor features, certain optimizations or for specifying non-standard ABI options. \\
-In the bigger picture of our research we attempt to identify libraries binary files. Often compiler optimizations cause distortion in in the outputted binary files causing identification algorithms to fail. Compiling binaries multiple times with different compilation options each time gives a set of binaries which include the same libraries, but have different distortions. This set of binaries can then be used to test the robustness of a library identification algorithm against distortion. \\
-This paper aims at finding and ranking the most common compilation options used in the wild, which have an impact on compilation output. \\
-In the first step we analyze which compiler options have an impact on the binary output, filtering out options only used by the front end e.g. to enable or disable language features or compiler warnings. In the second step we describe how to obtain a set of relevant free and open source projects and their build files. In the third step we then extract the build options from the various build file formats used in these free and open source projects. In the final step we filter compilation options not relevant to the binary output and rank the options based on their usage frequency accross projects. This leaves us with a set of relevant compilation options which can be used alone or in combination in order to create a test set for library identification systems. \\
-While library identification systems usually work on machine code and are thus idenpendent of the programming language this paper will focus on the C programming language.
+\section*{Abstract}
+Modern compilers often come with numerous compilation options. Apart from the most common options for defining input files, output files and general level of optimization, there are also options for enabling or disabling the use of certain processor features, certain optimizations or for specifying non-standard calling convention options. \\
+This paper aims at finding and ranking the most commonly used compilation options, which have an impact on compilation output. \\
+While this paper mainly focuses on the C programming language compiled using the \textit{GNU compiler collection} (gcc) and \textit{clang/LLVM} compiler its metholody can easily be adapted to other compilers or even other programming languages. \\
+The paper shows how to extract build flags from a build file and how to obtain build files from a given git repository. 
+First all \textit{gcc} and \textit{clang} options are extracted from the top 1000 most starred git repositories written in the C programming language and hosted on Github. Afterwards the compiler flags are ranked by their usage across the top 1000 github repositories and analyzed for their impact on compilation output.
+
+\section*{Keywords}
+compiler flags, compilation, compiler, github, gcc, clang, build tools
+
+\restoregeometry
+
+\section{Introduction}
+% TODO
+This paper is part of a research aiming at identifying libraries included in binaries. Often compiler optimizations cause distortion in the outputted binary files resulting in library identification algorithms to fail. For example a library known from one binary could look different in a second binary, due to the latter one being compiled with other options. In order to validate the robustness of a library identification algorithm a large set of binaries which all include the same libraries, but are compiled with different compiler flags is required. \\
+The goal of this paper is finding the list of the most used compiler flags with impact on compilation output. By compiling a set of projects using any or all combinations of these flags a large distorted set of binaries can be generated. These binaries can then be used to test the robustness of a library identification algorithm against distortion. \\
+As a first step for finding the list of most used compiler flags a list of all flags supported by a compiler is required, this is covered in section \ref{sec:findflags}. Afterwards section \ref{sec:github} covers how to obtain a list of the top 1000 most starred C github repositories and how to download a file tree for any given github repository. Section \ref{sec:buildfiles} covers which of the files included in a file tree belong to build tools. Finally section \ref{sec:usage} ranks the build flags by usage and section \ref{sec:impact} classifies them by their impact on compilation output.
+
+\iffalse
+In the bigger picture of our research we attempt to identify libraries included in binary files. Often compiler optimizations cause distortion in in the outputted binary files causing identification algorithms to fail. Compiling binaries multiple times with different compilation options each time gives a set of binaries which include the same libraries, but have different distortions. This set of binaries can then be used to test the robustness of a library identification algorithm against distortion. \\
+
+In the first step a list of all possible compiler flags for a given compiler is generated. In the second step we describe how to obtain a set of relevant free and open source projects and their build files. In the third step we then extract the build options from the various build file formats used in these free and open source projects. In the final step we filter compilation options not relevant to the binary output and rank the options based on their usage frequency accross projects. This leaves us with a set of relevant compilation options which can be used alone or in combination in order to create a test set for library identification systems. \\
+
+
+While library identification systems usually work on machine code and are thus idenpendent of the programming language this paper will focus on the C programming language compiled using the  \\
+The analyzation tools created when writing this paper however are compiler and even language independent and can be used for analyzing other compilers as well as other languages.
+\fi
+
+
+\section{Finding Compiler Flags} \label{sec:findflags}
+This section covers two different approaches at extracting a list of compilation flags of a compiler software. Both approaches are based on parsing the man page of compilers. A man page is a manual page for a program usually available via the \verb'man' command on POSIX\footnote{portable operating system interface}-compliant operating systems. \\
+In general a compiler usually can either be given single character options like \verb'-g' or long options of the form \verb'--option' or \verb'-nostdinc'. Flags like \verb'-f<option>' or \verb'-fno-<option>' consist of a common prefix and the name of a specific option to turn on or off. \\
+While examples in this section usually refer to the \textit{GNU compiler collection} (gcc) the described extraction techniques should also work with other compilers that have a text based documentation like \textit{clang}, the Intel C compiler or the Microsoft C compiler. \\
+Section \ref{sec:findflags:regex} covers a simple approach using regular expressions, while section \ref{sec:findflags:nlp} uses a more sophisticated method based on natural language processing.
+
+\subsection{Finding Flags using Regular Expressions} \label{sec:findflags:regex}
+Regular expressions are sequences of characters defining a pattern. This pattern can be applied to a given string to determine if the string matches the pattern. Additionally they can be used to search for a matching substring in a larger string\cite{regex}. This paper uses the perl compatible regular expression flavour as defined by \cite{pcre}. \\
+Traditional compiler flags come in long and short forms. Long options have the form \verb'--[a-zA-Z0-9-_]+', two dashes followed by one or more non-space characters. Short options have the form \verb'-[a-zA-Z0-9-_]', a single dash followed by a single character or number. Such options are usually parsed by the \verb'getopt_long' and \verb'getopt' functions respectively, which are part of the POSIX standard\cite{posix}. However as described in section \ref{sec:findflags} compilers such as the GNU C compiler use a custom scheme by having long options with only a single dash like for example \verb'-nostdinc'. Thus compatible regular expressions are \verb'--?[a-zA-Z0-9-_]+', one or two dashes followed by one or more non space characters.
+While those expressions can be used to find all compiler flags in a compiler manual they also produce a large number of false positives. For example in the \textit{gcc} man page there are occurences of strings such as \verb'output-file' or \verb'diff-filename', from these strings the regex would extract \verb'-file' and \verb'-filename' as compilation flags which are not valid compilation flags for \textit{gcc}. In order to prevent these in-word false positives usually a word border \verb'\b' is used which matches on the start and end of a word, but in this case the dash at the start of a compiler flag acts as a word border when preceeded by a letter. Instead a negative lookbehind is used to make sure no letter preceeds the compiler flag in the manual without including the preceeding character in the match. This results in the final regular expression shown below:
+\begin{center}
+	\verb'(?<!\w)--?[a-zA-Z0-9-_]+'
+\end{center}
+
+\subsection{Explain Shell Man Page Parser and Classifier} \label{sec:findflags:nlp}
+Explain Shell\cite{explainshell} is an online tool which, given any bash command, analyzes the program called and the used options providing extracted parts from the program's man page. For example when analyzing the command \verb'ls -l -h' it parses the man page of \verb'ls(1)', printing it's general description followed by the description of the \verb'-l' and \verb'-h' options. \\
+The backend and frontend source code of \url{explainshell.com} is available on github under the GPL v3 license\cite{explainshellsrc}. While the web tool can be used for understanding large bash commands of less well known programs the man page parsing engine in the backend extracts a list of program options alongside their description, which is exaclty the target of this section. \\
+Internally the extraction works by first compiling the raw man page source to HTML. Afterwards the HTML is divided into sections, which are classified whether they contain program flags using a pre-trained natural language processing classifier. When a section is classified as containing a program option the option is extracted from the section by searching for a large set of known flag formats commonly used by programs\cite{explainshellsrc}. \\
+While the orginal Explain Shell tool stores the flag alongside its descriptive section in a database, it was adapted to simply output a list of all found flags for the purposes of this paper\cite{compiler-flag-ranking}.
+
+\section{Obtaining Build Files from Open Source Repositories} \label{sec:github}
+With more than 40 million users and 44 million repositories Github is the largest code hosting service\cite{octoverse}. While other solutions like Gitlab and Bitbucket are mostly for closed source projects Github is often used for publishing code under a free and open source (FOSS) software license. Other commonly used  solutions for hosting FOSS software include cgit, Gitlab or plain source tarballs. While there are several well known FOSS projects hosted elsewhere\cite{savannah, kernelorg} many of them additionally have a read only mirror repository on github\iffalse\cite{github-gcc, github-gnome, github-linux}\fi. This allows to find and access a wide variety of popular software projects through a single API. \\
+Repositories on Github can be starred (i.e. liked) by other github users. Ranking repositories by the amount of people who starred them allows to prioritize popular projects, ignoring personal or inactive projects and projects which use github as a file storage or as a web hosting service\cite{mining-github1, mining-github2, mining-github3}. \\
+By using the search capabilities of the Github API\cite{github-api}, searching for all repositories written in C results in more than 400,000 repositories which can be used for compiler flag extraction. Filtering out all repositories with less than 100 stars and ordering the rest by the amount of stars they received leaves more than 7800 repositories for analysis. The most starred repositories on github include some well known and widely used software projects such as the Linux Kernel (92.6k Stars), curl (17.4k Stars) or numpy (14k Stars). Figure \ref{fig:github-top} shows the top 10 most starred repositories on github written in C. \\
+In order to retrieve a list of all files in a repository, what github calls a tree, first the latest commit has to be retrieved. Using the \textit{sha1} checksum of the latest commit the tree API endpoint can be used, which returns a list of all files in the repository at the time of the commit. Even though github provides API endpoints for querying file contents alongside file metadata using those endpoints counts towards the API rate limit of 5000 requests/hour. Instead file contents can be downloaded from \url{raw.githubusercontent.com}, which is the url used by the github UI when viewing a raw file. This allows to download the latest version of a file in a repository from Githubs CDN\footnote{content delivery network}, without increasing the usage counter of the Github API. This way only two API requests have to be made per repository, while still being able to access the contents of all files in the repository. \\
+
+\begin{figure}
+	\centering
+	\begin{tabular}{l | c | c}
+		Rank & Repository & Stars (in 1000) \\
+		\hline
+		0 & torvalds/linux & 92.6 \\
+		1 & netdata/netdata & 47.2 \\
+		2 & antirez/redis & 43.5 \\
+		3 & git/git & 33.0 \\
+		4 & Genymobile/scrcpy & 32.3 \\
+		5 & php/php-src & 27.5 \\
+		6 & bilibili/ijkplayer & 26.7 \\
+		7 & wg/wrk & 25 \\
+		8 & ggreer/the\_silver\_searcher & 20.4 \\
+		9 & obsproject/obs-studio & 20.1 \\
+	\end{tabular}
+	\caption{Top 10 most starred repositories on Github in June 2020}
+	\label{fig:github-top}
+\end{figure}
+
+\section{Identifying Build Files and extracting Compiler Flags} \label{sec:buildfiles}
+In order to compile a software project usually a build tool is used. A build file contains a set of compiler flags, input files and build rules, the build tool parses the build file and calls the compiler for each input file with the defined compiler flags. Thus in order to extract the compiler flags of a software project all of it build files have to be searched for known compiler flags. \\
+As described in section \ref{sec:github} a list of all files in a repository can easily be extracted for any github repository. From this list we need to find all build files of a repository in order to later extract the compilation flags. \\
+For most build tools one has to create a file with a specific name, for example the widely used and POSIX-standard build tool \textit{make} uses a file named \verb'Makefile'. Figure \ref{fig:buildtools} shows a list of common build tools used in the 1000 most starred C repositories on Github. Some repositories use multiple build tools resulting in the usage percentages summing up to more than 100\%. Especially repositories that use the \textit{GNU Build System} or \textit{cmake} often also include \verb'Makefile's used as an intermediate step generated from \verb'Makefile.in' and \verb'CmakeLists.txt' respectively\cite{gnu-build, cmake}. \\
+214 repositories, or 21.4\% do not contain any of the known build files. This can be repositories which only include a single .c and/or single .h file like \textit{facebook/fishhook}, which use a custom build system, like the bash scripts used in \textit{jgamblin/Mirai-Source-Code} or repositories not targeting a POSIX compliant operating system like \textit{microsoft/Windows-driver-samples} or \textit{SpacehuhnTech/esp8266\_deauther}.
+
+\begin{figure}[H]
+	\centering
+	\begin{tabular}{l | c | c}
+		Tool & Files & Usage \\
+		\hline
+		make & Makefile & 57.0\% \\
+		cmake & CMakeLists.txt & 26.7\% \\
+		\makecell[l]{GNU Build \\ System} & \makecell{configure.ac, configure \\ Makefile.am, Makefile.in, \\ aclocal.m4} & 21.4\% \\
+		meson & meson.build & 3.0\% \\
+		ninja & build.ninja & 0.1\% \\
+		\makecell[l]{none, custom \\ or other} & - & 21.3\% \\
+	\end{tabular}
+	\caption{Common build tools, their build files and their usage accross the 1000 most starred repositories on Github}
+	\label{fig:buildtools}
+\end{figure}
+
+\section{Compiler Flag Usage Statistics and Ranking} \label{sec:usage}
+After extracting a list of the top 1000 most starred repositories on Github written in C, as described in section \ref{sec:github}, the tree of these repositories is searched for files of the known build tools listed in figure \ref{fig:buildtools}. After downloading all found build files they are searched for known compiler flags. This is simply done by checking if a flag is a substring of a build file. By checking all the flags, obtained as described in section \ref{sec:findflags}, we can thus extract the full list of all compiler options used in a build file. From all the build files in a repository a set of compiler flags is created and the duplicates are removed. That way when a repository has ten build files each with the option \verb'-O2' it only counts as one use. However when there are ten repositories all using the option \verb'-O2' it counts as ten uses. \\
+The result is a list of 38927 total and 1041 unique compiler flags. With the list of possible \textit{gcc} options including 2664 options only roughly 39\% of all possible options are used within the test set. Unused flags are mostly \verb'-W<option>', \verb'-f<option>' and \verb'-m<option>' options, which can be used for enabling or disabling specific warnings, compiler features and machine specific features respectively. \\
+Figures \ref{fig:usage:all}, \ref{fig:usage:f} and \ref{fig:usage:W} show the most used compiler flags accross all repositories and how many of the repositories use them in percent. As noted in section \ref{sec:buildfiles}, 213 of the 1000 analyzed repositories did not use a known build tool, thus a usage value of 100\% would mean the flag is included in 787 repositories.
+
+\begin{figure}[H]
+	\centering
+	\begin{tabular}{l | c | p{.25\textwidth}}
+		Option & Usage & Description \\
+		\hline
+		\verb'-c' & 86.3\% & Don't link, only output object file \\
+		\verb'-o' & 84.1\% & Specify output filename \\
+		\verb'-p' & 80.8\% & Generate profiling information files \\
+		\verb'-l' & 79.9\% & Link dynamic library, e.g. \verb'-lpthread' \\
+		\verb'-D' & 78.3\% & predefine C preprocessor constant, e.g. \verb'-D_GNU_SOURCE' \\
+		\verb'-g' & 72.7\% & Embed debugging information in the binary \\
+		\verb'-Wall' & 69.8\% & Enable all warnings \\
+		\verb'-I' & 68.6\% & Specify an include directory \\
+		\verb'-O' & 63.7\% & specify optimization level (\verb'-O1', \verb'-O2', \verb'-O3', \verb'-Os') \\
+		\verb'-std' & 49.3\% & Define the C standard version, e.g. \verb'-std=c99' \\
+	\end{tabular}
+	\caption{Some of the most used compiler flags}
+	\label{fig:usage:all}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\begin{tabular}{l | c | p{.21\textwidth}}
+		Option & Usage & Description \\
+		\hline
+		\verb'-fPIC' & 32.3\% & generate position independent code \\
+		\verb'-fsanitize' & 13.6\% & address sanitize checks for detecting memory errors \\
+		\verb'-fno-common' & 13.3\% & do not place distinct global variables with same name in a common block \\
+		\verb'-fvisibility' & 12.7\% & set default ELF symbol visibility \\
+		\makecell[l]{-fno-strict- \\ aliasing} & 12.7\% & allow dereferencing a pointer that aliases an object of incompatible type \\
+	\end{tabular}
+	\caption{Most used -f flags}
+	\label{fig:usage:f}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\begin{tabular}{l | c | p{.25\textwidth}}
+		Option & Usage & Description \\
+		\hline
+		\verb'-Wall' & 69.8\% & enable all warnings \\
+		\verb'-Werror' & 37.4\% & treat warnings as errors \\
+		\verb'-Wextra' & 29.7\% & enable extra warnings \\
+		\makecell[l]{-Wstrict- \\ prototypes} & 16.8\% & disallow untyped function definitions \\
+		\makecell[l]{-Wmissing- \\ prototypes} & 16.3\% & disallow global functions without a prototype definition\\
+	\end{tabular}
+	\caption{Most used -W flags}
+	\label{fig:usage:W}
+\end{figure}
+
+
+\section{Compiler Option Classification} \label{sec:impact}
+While compilers like \textit{gcc} or \textit{clang} have thousands of distinct compiler flags, not all flags have an impact on the compilation output. This section tries to seperate flags with impact from those without in order to filter out flags without an impact. \\
+A compiler is usually divided into the frontend that parses the programming language and produces an intermediate representation (IR) of the program. Afterwards zero or more middlewares perform optimizations altering the IR by for example inlining function calls, removing unused code or assigning registers to variables. In the final step the backend translates the IR to machine code of the target architecture\cite{engineering-compiler}. The behaviour of all these steps can be altered using compiler flags. \\
+Specific language features in the frontend can be enabled or disabled, the output and behaviour of compiler warnings can be altered and preprocessor variables can be set. Middleware flags can be used to turn off IR optimizations like loop unrolling or function inlining. Lastly machine dependent flags can be used to control the use of hardware features like vector instructions or hardware floating point math. \\
+In \textit{gcc} and \textit{clang} all machine dependent flags start with \verb'-m'\cite{gcc-man, clang-man}, for example the \verb'-mno-sse' disables the usage of the x86 SSE instruction set. Similarly \verb'-msha' enables the usage of instruction for SHA1 and SHA256 hashing built into the x86 architecture. \\
+A similar group of compiler flags are all flags starting with \verb'-f'. These are used to enable or disable specific features during the IR altering and optimization steps and allow to control machine independent code generation behaviour\cite{gcc-man, clang-man}. One such flag is \verb'-funroll-loops' which enables loop unrolling of loops with compile time known iteration count. \\
+Flags starting with \verb'-W' control compiler warning behaviour and levels. As these flags only control output during compilation they have no impact on code generation and thus no impact on the resulting binary. Similarly the \verb'-d<letter>' flags control dumping of the internal compiler state for debugging purposes, which doesn't have an impact on the binary either. \\
+The \verb'-g' flag and it's children \verb'-g<option>' control the embedding of debug information into the binary. This allows to link position information from the frontend to code generated by the backend, which is later required for debugging. \\
+The remaining compiler flags do not have a common prefix, they are either generic flags for controlling input and output files or control behaviour of the C preprocessor and of the linker\cite{gcc-man, clang-man}. \\
+Figure \ref{fig:gcc-options} shows an overview of the above mentioned compiler option groups. Additionally the most common compiler flags, as found by section \ref{sec:usage}, which are not part of any of the above mentioned groups are also listed.
+
+\begin{figure}[H] % TODO H?
+	\centering
+	\begin{tabular}{l | c | p{.25\textwidth}}
+		\makecell[l]{Option \\ or Group} & Impact & Note \\
+		\hline
+		\verb'-f<option>', & \checkmark & \multirow{2}{.25\textwidth}{enabling/disabling a specific machine or compiler feature for a program which does not use it has no effect.} \\
+		\verb'-m<option>' & \checkmark & \vspace{2em}~ \\
+		\verb'-c' & X & even though the direct output will be different it will not have an impact on the fully linked binary. \\
+		\verb'-o' & X & \\
+		\verb'-p' & X & \\
+		\verb'-W<option>' & X & \\
+		\verb'-l<library>' & \checkmark & Usually inserts \verb'@plt' symbols into the binary \\
+		\verb'-D<name>' & \checkmark \\
+		\verb'-g' & \checkmark \\
+		\verb'-O<letter>' & \checkmark \\
+	\end{tabular}
+	\caption{Common build flag groups and their impact on compilation output}
+	\label{fig:gcc-options}
+\end{figure}
+
+\section{Conclusion}
+The task of this paper was to find the most common \textit{gcc} and \textit{clang} compiler flags and classify which of them have an impact on compilation output. In sections \ref{sec:findflags} to 
+\ref{sec:buildfiles} 1000 free and open source projects were analyzed, finding build files and searching for \textit{gcc} and \textit{clang} compiler flags. Afterwards sections \ref{sec:usage} and \ref{sec:impact} analyzed which are the most commonly used compiler flags and which have an impact on the output binary. \\
+The analyzation process is fully automated and the scripts are published as a FOSS project\cite{compiler-flag-ranking}. This enables anyone to rerun the analysis for different compilers, with a different dataset or even for other languages. \\
+With the results of this work a set of binaries with relevant distortions can be generated. This set can then be used to test library identification algorithms, i.e. algorithms that identify which libraries are included in a given binary. \\
+In further work an automatic \textit{compiler gym} will be created, which given a software project compiles the project multiple times with varying compilation options and varying compilers. The result will be a set of each uniquely distorted binaries which all include the same known set of libraries.
+
+\begin{thebibliography}{99}
+	\bibitem{regex} Ken Thompson: Programming Techniques: Regular expression search algorithm. Communications of the ACM (June 1968). \url{https://doi.org/10.1145/363347.363387}
+
+	\bibitem{pcre} Philip Hazel: PCRE - Perl Compatible Regular Expressions. \url{https://www.pcre.org/}. Accessed 15 June 2020
+
+	\bibitem{pcre2} Michela Becchi and Patrick Crowley: Extending finite automata to efficiently match Perl-compatible regular expressions. \textit{Proceedings of the 2008 ACM CoNEXT Conference (CoNEXT ’08)}. \textbf{25}, 1-12 (2008). \url{https://doi.org/10.1145/1544012.1544037}
+	
+	\bibitem{posix} International Organization for Standardization: Portable Operating System Interface (POSIX) Base Specifications, Issue 7. \textit{ISO/IEC/IEEE 9945:2009}, \url{https://www.iso.org/standard/50516.html}.
+	
+	\bibitem{gccbook} William von Hagen: The Definitive Guide to GCC. \textit{Apress}, New York (2011). \url{https://doi.org/10.1007/978-1-4302-0704-7}
+
+	\bibitem{explainshell} Idan Kamara: Explain Shell. \url{https://explainshell.com/}. Accessed 15 June 2020
+	
+	\bibitem{explainshellsrc} Idan Kamara: match command-line arguments to their help text, Explain Shell source code. \url{https://github.com/idank/explainshell}. Accessed 16 June 2020
+	
+	\bibitem{compiler-flag-ranking} Jakob Löw: Ranking compiler flags by their usage in the most popular github projects. \url{https://github.com/M4GNV5/compiler-flag-ranking}. Accessed 16 June 2020
+
+	\bibitem{octoverse} Github Inc.: The State of the OCTOVERSE. \url{https://octoverse.github.com/}. Accessed 14 June 2020
+	
+	\bibitem{mining-github1} Kalliamvakou, E., Gousios, G., Blincoe, K. et al. The promises and perils of mining GitHub. \textit{Proceedings of the 11th Working Conference on Mining Software Repositories}. 92-101 (2014). \url{https://doi.org/10.1145/2597073.2597074}
+	
+	\bibitem{mining-github2} Kalliamvakou, E., Gousios, G., Blincoe, K. et al. An in-depth study of the promises and perils of mining GitHub. \textit{Empir Software Eng} \textbf{21}, 2035-2071 (2016). \url{https://doi.org/10.1007/s10664-015-9393-5}
+	
+	\bibitem{github-api} Github Inc.: Github v3 REST API. \url{https://developer.github.com/v3/}. Accessed 14 June 2020
+
+	\bibitem{mining-github3} V. Cosentino, J. L. C. Izquierdo and J. Cabot. Findings from GitHub: Methods, Datasets and Limitations. \textit{2016 IEEE/ACM 13th Working Conference on Mining Software Repositories (MSR)}. 137-141 (2016). \url{https://doi.org/10.1145/2901739.2901776}
+
+	\bibitem{savannah} Free Software Foundation, Inc.: Savannah Git Hosting. \url{http://git.savannah.gnu.org/cgit/}. Accessed 14 June 2020
+
+	\bibitem{kernelorg} Linux Kernel Organization, Inc.: Kernel.org git repositories. \url{https://git.kernel.org/}. Accessed 14 June 2020
+
+\iffalse
+	\bibitem{github-gcc} Free Software Foundation, Inc.: gcc mirror on github. \url{https://github.com/gcc-mirror/gcc}. Accessed 14 June 2020
+
+	\bibitem{github-gnome} GNOME Foundation: GNOME Github Mirror. \url{https://github.com/GNOME}. Accessed 14 June 2020
+
+	\bibitem{github-linux} Linus Torvalds: Linux kernel source tree. \url{https://github.com/torvalds/linux}. Accessed 14 June 2020
+\fi
+
+	\bibitem{gnu-build} John Calcote: A Practitioner's Guide to GNU Autoconf, Automake, and Libtool, 2nd Edition. No Starch Press, San Francisco (2019). ISBN: 978-1593279721
+	
+	\bibitem{cmake} Martin, K. Hoffman B.: Mastering CMake: a cross-platform build system. Kitware, New York (2010). ISBN: 978-1930934207
+
+	\bibitem{engineering-compiler} Keith D. Cooper and Linda Torczon: Engineering a Compiler, 2nd edition. Elsevier, Amsterdam (2012). \url{https://doi.org/10.1016/C2009-0-27982-7}
+	\bibitem{gcc-man} Free Software Foundation, Inc.: gcc - GNU project C and C++ compiler. \url{https://www.man7.org/linux/man-pages/man1/gcc.1.html}. Accessed 17 June 2020
+	\bibitem{clang-man} The Clang Team: Clang command line argument reference. \url{https://clang.llvm.org/docs/ClangCommandLineReference.html}. Accessed 17 June 2020
+\end{thebibliography}
 
 \end{document}
