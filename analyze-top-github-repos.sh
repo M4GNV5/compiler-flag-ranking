@@ -10,9 +10,8 @@ function retrieve_page
 }
 
 rm repositories.list
-#for i in $(seq 1 10); do
-#    retrieve_page "$i"
-#done
-retrieve_page 10
+for i in $(seq 1 10); do
+    retrieve_page "$i"
+done
 
 python3 analyze-github-repos.py
